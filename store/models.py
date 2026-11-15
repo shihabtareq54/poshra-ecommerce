@@ -36,7 +36,7 @@ class Cart(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     @property
-    def total_items(self):
+    def total_price(self):
         # কার্টের সব আইটেমের সাবটোটাল যোগ করে মোট দাম বের করে:
         return sum(item.subtotal for item in self.items.all())
     def __str__(self):

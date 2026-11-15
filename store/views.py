@@ -1,3 +1,7 @@
+import uuid
+import requests
+from django.conf import settings
+from django.db import transaction 
 from django.contrib.auth import authenticate
 from rest_framework import generics, status, filters
 from rest_framework.response import Response
@@ -6,10 +10,10 @@ from rest_framework.views import APIView
 from rest_framework.exceptions import ValidationError
 from rest_framework.authtoken.models import Token
 from rest_framework_simplejwt.tokens import RefreshToken
-from .models import Product, Category,Cart, CartItem
+from .models import Product, Category,Cart, CartItem, Order, OrderItem
 from .serializers import (UserRegisterSerializer, 
                           ProductSerializer, CategorySerializer,
-                          CartItemSerializer,CartSerializer
+                          CartItemSerializer,CartSerializer, OrderSerializer
                           )
 from django_filters.rest_framework import DjangoFilterBackend
 
@@ -235,3 +239,161 @@ class CartItemDetailView(generics.RetrieveUpdateDestroyAPIView):
     
 
     
+# ==============================================================
+# ৪. অর্ডার হিস্ট্রি, Atomic Checkout ও SSLCommerz (BM-6 & BM-7)
+# ==============================================================
+
+class OrderListView(generics.ListAPIView):
+    serializer_class = OrderSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Order.objects.filter(user=self.request.user).order_by('-created_at')
+
+
+class CheckoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request):
+        cart = Cart.objects.filter(user=request.user).first()
+        if not cart or not cart.items.exists():
+            return Response({"error": "Your cart is empty."}, status=status.HTTP_400_BAD_REQUEST)
+
+        shipping_address = request.data.get('shipping_address')
+        phone = request.data.get('phone')
+        if not shipping_address or not phone:
+            return Response(
+                {"error": "Shipping address and phone number are required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        for item in cart.items.all():
+            if item.quantity > item.product.stock:
+                return Response(
+                    {"error": f"Insufficient stock for {item.product.name}. Available: {item.product.stock}"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        tran_id = f"POSHRA-{uuid.uuid4().hex[:10].upper()}"
+        order = Order.objects.create(
+            user=request.user,
+            total_amount=cart.total_price,
+            transaction_id=tran_id,
+            shipping_address=shipping_address,
+            phone=phone
+        )
+
+        for item in cart.items.all():
+            OrderItem.objects.create(
+                order=order,
+                product=item.product,
+                quantity=item.quantity,
+                price_at_purchase=item.product.price
+            )
+
+        ssl_url = (
+            "https://sandbox.sslcommerz.com/gwprocess/v4/api.php"
+            if settings.SSLCOMMERZ_IS_SANDBOX
+            else "https://securepay.sslcommerz.com/gwprocess/v4/api.php"
+        )
+        base_url = request.build_absolute_uri('/').rstrip('/')
+
+        post_data = {
+            'store_id': settings.SSLCOMMERZ_STORE_ID,
+            'store_passwd': settings.SSLCOMMERZ_STORE_PASS,
+            'total_amount': str(order.total_amount),
+            'currency': 'BDT',
+            'tran_id': tran_id,
+            'success_url': f"{base_url}/api/payment/success/",
+            'fail_url': f"{base_url}/api/payment/fail/",
+            'cancel_url': f"{base_url}/api/payment/cancel/",
+            'cus_name': request.user.username,
+            'cus_email': request.user.email or 'customer@poshra.com',
+            'cus_add1': shipping_address,
+            'cus_city': 'Dhaka',
+            'cus_country': 'Bangladesh',
+            'cus_phone': phone,
+            'shipping_method': 'Courier',
+            'ship_name': request.user.username,
+            'ship_add1': shipping_address,
+            'ship_city': 'Dhaka',
+            'ship_postcode': '1230',
+            'ship_country': 'Bangladesh',
+            'product_name': f'Poshra Order #{order.id}',
+            'product_category': 'Electronics',
+            'product_profile': 'general',
+        }
+
+        ssl_response = requests.post(ssl_url, data=post_data, timeout=15).json()
+
+        if ssl_response.get('status') == 'SUCCESS':
+            return Response({
+                "order_id": order.id,
+                "transaction_id": tran_id,
+                "payment_url": ssl_response.get('GatewayPageURL')
+            }, status=status.HTTP_201_CREATED)
+        else:
+            raise Exception(f"SSLCommerz Error: {ssl_response.get('failedreason', 'Gateway init failed')}")
+
+
+class PaymentSuccessView(APIView):
+    permission_classes = [AllowAny]
+
+    @transaction.atomic
+    def post(self, request):
+        tran_id = request.data.get('tran_id')
+        val_id = request.data.get('val_id')
+
+        order = generics.get_object_or_404(Order, transaction_id=tran_id)
+
+        if order.payment_status == 'Paid':
+            return Response({"message": "Order already paid.", "order_id": order.id})
+
+        val_url = (
+            "https://sandbox.sslcommerz.com/validator/api/validationserverAPI.php"
+            if settings.SSLCOMMERZ_IS_SANDBOX
+            else "https://securepay.sslcommerz.com/validator/api/validationserverAPI.php"
+        )
+        params = {
+            'val_id': val_id,
+            'store_id': settings.SSLCOMMERZ_STORE_ID,
+            'store_passwd': settings.SSLCOMMERZ_STORE_PASS,
+            'format': 'json'
+        }
+        val_res = requests.get(val_url, params=params, timeout=15).json()
+
+        if val_res.get('status') in ['VALID', 'VALIDATED']:
+            order.payment_status = 'Paid'
+            order.status = 'Processing'
+            order.save()
+
+            for item in order.items.all():
+                product = item.product
+                product.stock = max(0, product.stock - item.quantity)
+                product.save()
+
+            CartItem.objects.filter(cart__user=order.user).delete()
+            return Response({"message": "Payment successful!", "order_id": order.id, "status": "Paid"})
+
+        order.payment_status = 'Failed'
+        order.save()
+        return Response({"error": "Payment validation failed."}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class PaymentFailView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        tran_id = request.data.get('tran_id')
+        Order.objects.filter(transaction_id=tran_id).update(payment_status='Failed')
+        return Response({"message": "Payment failed."}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class PaymentCancelView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        tran_id = request.data.get('tran_id')
+        Order.objects.filter(transaction_id=tran_id).update(payment_status='Cancelled', status='Cancelled')
+        return Response({"message": "Payment cancelled by user."}, status=status.HTTP_200_OK)
