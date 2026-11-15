@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Product, Category,Cart, CartItem
+from .models import Product, Category,Cart, CartItem, Order, OrderItem
 from django.contrib.auth.models import User
 
 
@@ -50,7 +50,7 @@ class CartItemSerializer(serializers.ModelSerializer):
     product_name = serializers.ReadOnlyField(source='product.name')
     product_price = serializers.ReadOnlyField(source='product.price')
     product_image = serializers.ImageField(source='product.image', read_only=True)
-    subtotal = serializers.SerializerMethodField()
+    subtotal = serializers.ReadOnlyField()
 
     class Meta:
         model = CartItem
@@ -63,3 +63,22 @@ class CartSerializer(serializers.ModelSerializer):
     class Meta:
         model = Cart
         fields = ['id', 'items', 'total_price', 'created_at' ]
+
+
+class OrderItemSerializer(serializers.ModelSerializer):
+    product_name = serializers.ReadOnlyField(source='product.name')
+
+    class Meta:
+        model = OrderItem
+        fields = ('id', 'product', 'product_name', 'quantity', 'price_at_purchase', 'subtotal')
+
+
+class OrderSerializer(serializers.ModelSerializer):
+    items = OrderItemSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Order
+        fields = (
+            'id', 'total_amount', 'status', 'payment_status',
+            'transaction_id', 'shipping_address', 'phone', 'items', 'created_at'
+        )
