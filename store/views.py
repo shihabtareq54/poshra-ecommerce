@@ -3,10 +3,14 @@ from rest_framework import generics, status, filters
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.views import APIView
+from rest_framework.exceptions import ValidationError
 from rest_framework.authtoken.models import Token
 from rest_framework_simplejwt.tokens import RefreshToken
-from .models import Product, Category
-from .serializers import UserRegisterSerializer, ProductSerializer, CategorySerializer
+from .models import Product, Category,Cart, CartItem
+from .serializers import (UserRegisterSerializer, 
+                          ProductSerializer, CategorySerializer,
+                          CartItemSerializer,CartSerializer
+                          )
 from django_filters.rest_framework import DjangoFilterBackend
 
 # ==============================================================
@@ -88,6 +92,13 @@ class LogoutView(APIView):
         return Response({'message': 'Successfully logged out'}, status=status.HTTP_204_NO_CONTENT)
 
 
+
+
+
+
+
+
+
 # ==============================================================
 # ২. প্রোডাক্ট ক্যাটালগ, সার্চ, ফিল্টার ও পেজিনেশন API (BM-4)
 # ==============================================================
@@ -146,3 +157,81 @@ class ProductDetailView(generics.RetrieveAPIView):
     serializer_class = ProductSerializer
     permission_classes = [AllowAny]
 
+
+
+
+
+
+
+
+
+# ==============================================================
+# ৩. শপিং কার্ট API (BM-5)
+# ==============================================================
+
+class CartView(APIView):
+    
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        cart, _ = Cart.objects.get_or_create(user=request.user)
+        serializer = CartSerializer(cart)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class CartItemCreateView(APIView):
+    
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        cart, _ = Cart.objects.get_or_create(user=request.user)
+        product_id = request.data.get('product')
+        quantity = int(request.data.get('quantity', 1))
+
+        if quantity <= 0:
+            return Response({'error': 'Quantity must be greater than zero.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        product = generics.get_object_or_404(Product, id=product_id)
+
+        # আগে থেকেই কার্টে এই প্রোডাক্ট আছে কি না চেক:
+        cart_item, created = CartItem.objects.get_or_create(
+            cart=cart, 
+            product=product,
+            defaults={'quantity': 0}
+            )
+        new_quantity = cart_item.quantity + quantity
+
+        # Stock Guard: স্টকের চেয়ে বেশি অর্ডার আটকে দেওয়া
+        if new_quantity > product.stock:
+            return Response(
+                {'error': 'Not enough stock available.'}, 
+                status=status.HTTP_400_BAD_REQUEST
+                )
+
+        cart_item.quantity = new_quantity
+        cart_item.save()
+        serializer = CartItemSerializer(cart_item)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class CartItemDetailView(generics.RetrieveUpdateDestroyAPIView):
+    
+    serializer_class = CartItemSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        # Security: ইউজার যেন শুধু নিজের কার্টের আইটেমই এডিট/ডিলিট করতে পারে!
+        return CartItem.objects.filter(cart__user=self.request.user)
+
+    def perform_update(self, serializer):
+        # পরিমাণ আপডেট (PATCH) করার সময়ও স্টক চেক:
+        new_qty = serializer.validated_data.get('quantity', serializer.instance.quantity)
+        if new_qty > serializer.instance.product.stock:
+            
+            raise ValidationError('Not enough stock available.')
+        serializer.save()
+
+
+    
+
+    
