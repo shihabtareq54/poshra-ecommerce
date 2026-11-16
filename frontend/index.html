@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POSHRA (পসরা) | Tech & Gadget Store</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+    <!-- শেয়ার্ড হেডার ও ক্যাটাগরি ট্যাব -->
+    <div id="shared-header"></div>
+
+    <!-- হিরো ব্যানার (মকআপ অনুযায়ী) -->
+    <section class="container hero-section">
+        <div class="hero-banner">
+            <h1>UPGRADE YOUR SETUP</h1>
+            <p>Discover authentic tech gear, laptops, mechanical keyboards & accessories.</p>
+            <a href="products.html" class="hero-cta">Shop Now</a>
+        </div>
+    </section>
+
+    <!-- মেইন স্টোর লেআউট (বামে ফিল্টার সাইডবার + ডানে ৪-কলাম প্রোডাক্ট গ্রিড) -->
+    <main class="container store-layout">
+        <!-- ফিল্টার সাইডবার -->
+        <aside class="filter-sidebar">
+            <div class="filter-group">
+                <h4>Price Range ৳</h4>
+                <div class="price-inputs">
+                    <input type="number" id="min-price" placeholder="Min">
+                    <span>-</span>
+                    <input type="number" id="max-price" placeholder="Max">
+                </div>
+                <button class="btn-navy" id="apply-filter-btn">Apply Filter</button>
+                <button class="btn-outline-blue" id="reset-filter-btn" style="margin-top:8px;">Reset</button>
+            </div>
+
+            <div class="filter-group">
+                <h4>Sort By</h4>
+                <select id="sort-select" class="filter-select">
+                    <option value="-created_at">Newest Arrivals</option>
+                    <option value="price">Price: Low to High</option>
+                    <option value="-price">Price: High to Low</option>
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <h4>Availability</h4>
+                <label class="checkbox-row">
+                    <input type="checkbox" id="in-stock-only"> In Stock Only
+                </label>
+            </div>
+        </aside>
+
+        <!-- প্রোডাক্ট ক্যাটালগ এরিয়া -->
+        <section>
+            <div class="catalog-header">
+                <h2>Featured Tech Gear</h2>
+                <span id="product-count-text">Loading...</span>
+            </div>
+
+            <div id="products-grid" class="products-grid">
+                <p>Loading products...</p>
+            </div>
+
+            <div id="pagination-bar" class="pagination-bar"></div>
+        </section>
+    </main>
+
+    <!-- শেয়ার্ড ফুটার -->
+    <div id="shared-footer"></div>
+
+    <script src="js/api.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            initSharedLayout();
+            loadHomeProducts();
+
+            document.getElementById('apply-filter-btn').onclick = () => loadHomeProducts();
+            document.getElementById('sort-select').onchange = () => loadHomeProducts();
+            document.getElementById('in-stock-only').onchange = () => loadHomeProducts();
+            document.getElementById('reset-filter-btn').onclick = () => {
+                document.getElementById('min-price').value = '';
+                document.getElementById('max-price').value = '';
+                document.getElementById('in-stock-only').checked = false;
+                document.getElementById('sort-select').value = '-created_at';
+                loadHomeProducts();
+            };
+        });
+
+        async function loadHomeProducts(url = null) {
+            const grid = document.getElementById('products-grid');
+            const countText = document.getElementById('product-count-text');
+            grid.innerHTML = '<p>Loading products...</p>';
+
+            if (!url) {
+                const params = new URLSearchParams();
+                const minP = document.getElementById('min-price').value;
+                const maxP = document.getElementById('max-price').value;
+                const sort = document.getElementById('sort-select').value;
+
+                if (minP) params.append('price__gte', minP);
+                if (maxP) params.append('price__lte', maxP);
+                if (sort) params.append('ordering', sort);
+
+                url = `${API_BASE}/products/?${params.toString()}`;
+            }
+
+            try {
+                const res = await fetch(url);
+                const data = await res.json();
+                let products = data.results || [];
+
+                if (document.getElementById('in-stock-only').checked) {
+                    products = products.filter(p => p.in_stock);
+                }
+
+                countText.innerText = `Showing ${products.length} of ${data.count || products.length} items`;
+
+                if (products.length === 0) {
+                    grid.innerHTML = '<p style="grid-column:1/-1; text-align:center; padding:32px; background:#fff; border-radius:8px;">No products found matching your criteria.</p>';
+                    document.getElementById('pagination-bar').innerHTML = '';
+                    return;
+                }
+
+                grid.innerHTML = products.map(buildProductCardHTML).join('');
+                renderPagination(data.previous, data.next);
+            } catch (err) {
+                grid.innerHTML = '<p style="color:#dc2626;">Could not connect to backend server.</p>';
+            }
+        }
+
+        function renderPagination(prevUrl, nextUrl) {
+            const bar = document.getElementById('pagination-bar');
+            bar.innerHTML = '';
+            if (prevUrl) {
+                const btn = document.createElement('button');
+                btn.className = 'page-btn';
+                btn.innerText = '← Previous';
+                btn.onclick = () => loadHomeProducts(prevUrl);
+                bar.appendChild(btn);
+            }
+            if (nextUrl) {
+                const btn = document.createElement('button');
+                btn.className = 'page-btn';
+                btn.innerText = 'Next →';
+                btn.onclick = () => loadHomeProducts(nextUrl);
+                bar.appendChild(btn);
+            }
+        }
+    </script>
+</body>
+</html>

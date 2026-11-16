@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Orders | POSHRA (পসরা)</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+    <div id="shared-header"></div>
+
+    <main class="container page-container">
+        <div class="breadcrumb"><a href="index.html">Home</a> / <span>My Orders</span></div>
+
+        <div class="panel-card">
+            <h2 style="margin-bottom:20px;">📦 My Orders & Tracking</h2>
+            <div id="orders-container"><p>Loading your orders...</p></div>
+        </div>
+    </main>
+
+    <div id="shared-footer"></div>
+
+    <script src="js/api.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            initSharedLayout();
+            if (!requireAuth()) return;
+            loadOrders();
+        });
+
+        async function loadOrders() {
+            const token = localStorage.getItem('auth_token');
+            const container = document.getElementById('orders-container');
+
+            try {
+                const res = await fetch(`${API_BASE}/orders/`, {
+                    headers: { 'Authorization': `Token ${token}` }
+                });
+                const data = await res.json();
+                const orders = data.results || data;
+
+                if (!orders.length) {
+                    container.innerHTML = '<p style="color:#6b7280;">You have not placed any orders yet.</p>';
+                    return;
+                }
+
+                container.innerHTML = orders.map(order => {
+                    const date = new Date(order.created_at).toLocaleDateString('en-US', {
+                        year: 'numeric', month: 'short', day: 'numeric'
+                    });
+                    const payClass = order.payment_status === 'Paid' ? 'status-paid' :
+                                     order.payment_status === 'Failed' ? 'status-failed' : 'status-pending';
+
+                    return `
+                        <div style="border:1px solid #e5e7eb; border-radius:8px; padding:16px; margin-bottom:14px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
+                                <div>
+                                    <strong>Order #${order.id}</strong>
+                                    <span style="color:#6b7280; font-size:12.5px; margin-left:8px;">(${escapeHTML(order.transaction_id)}) • ${date}</span>
+                                </div>
+                                <div style="font-size:16px; font-weight:800; color:#ef4a23;">
+                                    ৳ ${Number(order.total_amount).toLocaleString()}
+                                </div>
+                            </div>
+
+                            <div style="display:flex; gap:10px; margin-bottom:10px; font-size:12.5px;">
+                                <span>Payment: <span class="status-pill ${payClass}">${order.payment_status}</span></span>
+                                <span>Order Status: <span class="status-pill status-pending">${order.status}</span></span>
+                            </div>
+
+                            <div style="font-size:13px; color:#4b5563; background:#f9fafb; padding:10px; border-radius:6px;">
+                                <div><strong>Items:</strong> ${order.items.map(i => `${i.quantity}x ${escapeHTML(i.product_name)} (৳${Number(i.price_at_purchase).toLocaleString()})`).join(', ')}</div>
+                                <div style="margin-top:4px;"><strong>Delivery:</strong> ${escapeHTML(order.shipping_address)} • 📞 ${escapeHTML(order.phone)}</div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } catch (err) {
+                container.innerHTML = '<p style="color:#dc2626;">Failed to load order history.</p>';
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Product Details | POSHRA (পসরা)</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+    <div id="shared-header"></div>
+
+    <main class="container page-container">
+        <div class="breadcrumb" id="breadcrumb">
+            <a href="index.html">Home</a> / <span>Loading...</span>
+        </div>
+
+        <div id="detail-container" class="detail-card">
+            <p>Loading product details...</p>
+        </div>
+    </main>
+
+    <div id="shared-footer"></div>
+
+    <script src="js/api.js"></script>
+    <script>
+        let selectedQty = 1;
+        let maxStock = 1;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initSharedLayout();
+            const productId = getQueryParam('id');
+            if (!productId) {
+                window.location.href = 'index.html';
+                return;
+            }
+            loadProductDetail(productId);
+        });
+
+        async function loadProductDetail(id) {
+            const container = document.getElementById('detail-container');
+            const breadcrumb = document.getElementById('breadcrumb');
+
+            try {
+                const res = await fetch(`${API_BASE}/products/${id}/`);
+                if (!res.ok) {
+                    container.innerHTML = '<p style="color:#dc2626;">Product not found.</p>';
+                    return;
+                }
+                const p = await res.json();
+                maxStock = p.stock;
+                document.title = `${p.name} | POSHRA`;
+
+                breadcrumb.innerHTML = `
+                    <a href="index.html">Home</a> / 
+                    <a href="products.html?category=${p.category}&name=${encodeURIComponent(p.category_name)}">${escapeHTML(p.category_name)}</a> / 
+                    <span>${escapeHTML(p.name)}</span>
+                `;
+
+                container.innerHTML = `
+                    <div class="detail-image-box">
+                        <img src="${p.image || FALLBACK_IMG}" alt="${escapeHTML(p.name)}">
+                    </div>
+
+                    <div class="detail-info">
+                        <span class="stock-badge ${p.in_stock ? 'in-stock' : 'out-stock'}">
+                            ${p.in_stock ? `In Stock (${p.stock} available)` : 'Out of Stock'}
+                        </span>
+                        <h1>${escapeHTML(p.name)}</h1>
+                        <div style="font-size:13px; color:#6b7280;">Category: <strong>${escapeHTML(p.category_name)}</strong></div>
+                        <div class="detail-price">৳ ${Number(p.price).toLocaleString()}</div>
+
+                        <h4 style="font-size:14px; margin-bottom:6px; color:#111827;">Key Specifications & Description</h4>
+                        <div class="detail-desc">${escapeHTML(p.description)}</div>
+
+                        ${p.in_stock ? `
+                            <div class="detail-actions">
+                                <div class="qty-selector">
+                                    <button type="button" onclick="changeQty(-1)">-</button>
+                                    <span id="qty-display">1</span>
+                                    <button type="button" onclick="changeQty(1)">+</button>
+                                </div>
+                                <button class="btn-primary" onclick="addToCartAPI(${p.id}, selectedQty, false)">
+                                    🛒 Add to Cart
+                                </button>
+                                <button class="btn-accent" onclick="addToCartAPI(${p.id}, selectedQty, true)">
+                                    ⚡ Buy Now
+                                </button>
+                            </div>
+                        ` : `
+                            <button class="btn-outline-blue" disabled style="width:auto; opacity:0.5; cursor:not-allowed;">
+                                Currently Out of Stock
+                            </button>
+                        `}
+                    </div>
+                `;
+            } catch (err) {
+                container.innerHTML = '<p style="color:#dc2626;">Failed to load product details.</p>';
+            }
+        }
+
+        function changeQty(delta) {
+            const next = selectedQty + delta;
+            if (next >= 1 && next <= maxStock) {
+                selectedQty = next;
+                document.getElementById('qty-display').innerText = selectedQty;
+            }
+        }
+    </script>
+</body>
+</html>
