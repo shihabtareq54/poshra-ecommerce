@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Store Manager Dashboard | POSHRA (পসরা)</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+    <div id="shared-header"></div>
+
+    <main class="container page-container">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:10px;">
+            <div>
+                <h1 style="font-size:24px; font-weight:800;">⚙️ Poshra Store Manager</h1>
+                <p style="color:#6b7280; font-size:13.5px;">Manage products, stock, categories, and customer orders in one place.</p>
+            </div>
+            <a href="index.html" class="btn-outline-blue" style="width:auto;">← Back to Storefront</a>
+        </div>
+
+        <!-- ১. লাইভ KPI সামারি কার্ডস -->
+        <div class="kpi-grid">
+            <div class="kpi-card">
+                <div class="kpi-label">Total Paid Revenue</div>
+                <div class="kpi-value" id="kpi-revenue" style="color:#16a34a;">৳ 0</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Total Orders</div>
+                <div class="kpi-value" id="kpi-orders">0</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Active Products</div>
+                <div class="kpi-value" id="kpi-products">0</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Low Stock Alerts (≤ 5)</div>
+                <div class="kpi-value" id="kpi-low-stock" style="color:#ef4a23;">0</div>
+            </div>
+        </div>
+
+        <!-- ২. ড্যাশবোর্ড ট্যাবস -->
+        <div class="admin-tabs">
+            <button class="admin-tab-btn active" onclick="switchTab('orders-tab', this)">📦 Orders & Payments</button>
+            <button class="admin-tab-btn" onclick="switchTab('products-tab', this)">🛍️ Products & Stock</button>
+            <button class="admin-tab-btn" onclick="switchTab('add-tab', this)">➕ Add Product / Category</button>
+        </div>
+
+        <!-- ট্যাব ১: অর্ডার ও পেমেন্ট ম্যানেজমেন্ট -->
+        <section id="orders-tab" class="panel-card">
+            <h3 style="margin-bottom:16px;">Customer Orders & SSLCommerz Payments</h3>
+            <div style="overflow-x:auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Order ID</th>
+                            <th>Customer</th>
+                            <th>Items</th>
+                            <th>Amount</th>
+                            <th>Payment</th>
+                            <th>Delivery Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="admin-orders-body">
+                        <tr><td colspan="6">Loading orders...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- ট্যাব ২: প্রোডাক্ট ও স্টক ম্যানেজমেন্ট -->
+        <section id="products-tab" class="panel-card" style="display:none;">
+            <h3 style="margin-bottom:16px;">Inventory & Product List</h3>
+            <div style="overflow-x:auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Product</th>
+                            <th>Category</th>
+                            <th>Brand</th>
+                            <th>Price</th>
+                            <th>Stock</th>
+                            <th>Quick Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="admin-products-body">
+                        <tr><td colspan="6">Loading products...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- ট্যাব ৩: নতুন প্রোডাক্ট ও ক্যাটাগরি যোগ করা -->
+        <section id="add-tab" style="display:none;">
+            <div class="checkout-layout">
+                <div class="panel-card">
+                    <h3 style="margin-bottom:16px;">➕ Upload New Product</h3>
+                    <form id="add-product-form">
+                        <div class="form-field">
+                            <label>Product Name</label>
+                            <input type="text" id="p-name" placeholder="e.g. Lenovo IdeaPad Slim 3" required>
+                        </div>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                            <div class="form-field">
+                                <label>Category</label>
+                                <select id="p-category" required></select>
+                            </div>
+                            <div class="form-field">
+                                <label>Brand</label>
+                                <input type="text" id="p-brand" placeholder="e.g. Lenovo, Logitech" required>
+                            </div>
+                        </div>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                            <div class="form-field">
+                                <label>Price (৳ BDT)</label>
+                                <input type="number" id="p-price" placeholder="e.g. 62000" required>
+                            </div>
+                            <div class="form-field">
+                                <label>Initial Stock Quantity</label>
+                                <input type="number" id="p-stock" placeholder="e.g. 15" required>
+                            </div>
+                        </div>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                            <div class="form-field">
+                                <label>Main Cover Image</label>
+                                <input type="file" id="p-image" accept="image/*">
+                            </div>
+                            <div class="form-field">
+                                <label>Additional Gallery Images (Select Multiple)</label>
+                                <input type="file" id="p-gallery" accept="image/*" multiple>
+                            </div>
+                        </div>
+                        <div class="form-field">
+                            <label>Description & Full Specifications</label>
+                            <textarea id="p-desc" rows="10" style="min-height: 220px; resize: vertical; line-height: 1.6;" placeholder="Write detailed product specifications, features, warranty, and highlights...&#10;&#10;• Processor: ...&#10;• RAM: ...&#10;• Storage: ...&#10;• Warranty: 2 Years Official" required></textarea>
+                        </div>
+                        <button type="submit" class="btn-accent full-width" id="upload-p-btn">Publish Product to Store</button>
+                    </form>
+                </div>
+
+                <div class="panel-card">
+                    <h3 style="margin-bottom:16px;">📂 Add New Category</h3>
+                    <form id="add-category-form">
+                        <div class="form-field">
+                            <label>Category Name</label>
+                            <input type="text" id="c-name" placeholder="e.g. Laptops, Keyboards, Monitors" required>
+                        </div>
+                        <button type="submit" class="btn-navy">Create Category</button>
+                    </form>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <div id="shared-footer"></div>
+
+    <script src="js/api.js"></script>
+    <script>
+        const token = localStorage.getItem('auth_token');
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (!token || localStorage.getItem('is_staff') !== 'true') {
+                alert('Store Admin access only. Please Sign In with an admin account.');
+                window.location.href = 'index.html';
+                return;
+            }
+            initSharedLayout();
+            loadDashboardData();
+            setupAdminForms();
+        });
+
+        function switchTab(tabId, btn) {
+            ['orders-tab', 'products-tab', 'add-tab'].forEach(id => {
+                document.getElementById(id).style.display = id === tabId ? 'block' : 'none';
+            });
+            document.querySelectorAll('.admin-tab-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        }
+
+        async function loadDashboardData() {
+            await Promise.all([loadStats(), loadAdminOrders(), loadAdminProducts(), loadCategoryOptions()]);
+        }
+
+        async function loadStats() {
+            const res = await fetch(`${API_BASE}/admin-panel/stats/`, { headers: { 'Authorization': `Token ${token}` } });
+            if (res.ok) {
+                const s = await res.json();
+                document.getElementById('kpi-revenue').innerText = `৳ ${Number(s.total_revenue).toLocaleString()}`;
+                document.getElementById('kpi-orders').innerText = s.total_orders;
+                document.getElementById('kpi-products').innerText = s.total_products;
+                document.getElementById('kpi-low-stock').innerText = s.low_stock_count;
+            }
+        }
+
+        async function loadAdminOrders() {
+            const tbody = document.getElementById('admin-orders-body');
+            const res = await fetch(`${API_BASE}/admin-panel/orders/`, { headers: { 'Authorization': `Token ${token}` } });
+            const orders = await res.json();
+
+            if (!orders.length) {
+                tbody.innerHTML = '<tr><td colspan="6">No orders placed yet.</td></tr>';
+                return;
+            }
+
+            const statuses = ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'];
+            tbody.innerHTML = orders.map(o => {
+                const payClass = o.payment_status === 'Paid' ? 'status-paid' : o.payment_status === 'Failed' ? 'status-failed' : 'status-pending';
+                return `
+                    <tr>
+                        <td><strong>#${o.id}</strong><br><span style="font-size:11px; color:#6b7280;">${escapeHTML(o.transaction_id)}</span></td>
+                        <td>@${escapeHTML(o.customer_username)}<br><span style="font-size:11px; color:#6b7280;">${escapeHTML(o.phone)}</span></td>
+                        <td style="font-size:12.5px;">${o.items.map(i => `${i.quantity}x ${escapeHTML(i.product_name)}`).join('<br>')}</td>
+                        <td><strong>৳ ${Number(o.total_amount).toLocaleString()}</strong></td>
+                        <td><span class="status-pill ${payClass}">${o.payment_status}</span></td>
+                        <td>
+                            <select class="filter-select" style="width:auto;" onchange="updateOrderStatus(${o.id}, this.value)">
+                                ${statuses.map(st => `<option value="${st}" ${o.status === st ? 'selected' : ''}>${st}</option>`).join('')}
+                            </select>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        window.updateOrderStatus = async (orderId, newStatus) => {
+            const res = await fetch(`${API_BASE}/admin-panel/orders/${orderId}/`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Token ${token}` },
+                body: JSON.stringify({ status: newStatus })
+            });
+            if (res.ok) loadStats();
+            else alert('Failed to update order status.');
+        };
+
+        async function loadAdminProducts() {
+            const tbody = document.getElementById('admin-products-body');
+            const res = await fetch(`${API_BASE}/admin-panel/products/`, { headers: { 'Authorization': `Token ${token}` } });
+            const products = await res.json();
+
+            if (!products.length) {
+                tbody.innerHTML = '<tr><td colspan="6">No products uploaded yet.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = products.map(p => `
+                <tr>
+                    <td><strong>${escapeHTML(p.name)}</strong></td>
+                    <td>${escapeHTML(p.category_name)}</td>
+                    <td>${escapeHTML(p.brand)}</td>
+                    <td>৳ ${Number(p.price).toLocaleString()}</td>
+                    <td><strong style="color:${p.stock <= 5 ? '#dc2626' : '#16a34a'};">${p.stock}</strong></td>
+                    <td style="display:flex; gap:6px;">
+                        <button class="btn-outline-blue" style="width:auto; padding:4px 8px; font-size:12px;" onclick="restockProduct(${p.id}, ${p.stock + 5})">+5 Stock</button>
+                        <button class="btn-danger-sm" onclick="deleteProduct(${p.id})">Delete</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        window.restockProduct = async (id, newStock) => {
+            await fetch(`${API_BASE}/admin-panel/products/${id}/`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Token ${token}` },
+                body: JSON.stringify({ stock: newStock })
+            });
+            loadDashboardData();
+        };
+
+        window.deleteProduct = async (id) => {
+            if (!confirm('Delete this product? (Note: Products already in customer orders are protected.)')) return;
+            const res = await fetch(`${API_BASE}/admin-panel/products/${id}/`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Token ${token}` }
+            });
+            if (res.ok) loadDashboardData();
+            else alert('Cannot delete product because it is part of existing customer orders.');
+        };
+
+        async function loadCategoryOptions() {
+            const select = document.getElementById('p-category');
+            const res = await fetch(`${API_BASE}/categories/`);
+            const cats = await res.json();
+            select.innerHTML = cats.map(c => `<option value="${c.id}">${escapeHTML(c.name)}</option>`).join('');
+        }
+
+        function setupAdminForms() {
+            document.getElementById('add-category-form').onsubmit = async (e) => {
+                e.preventDefault();
+                const name = document.getElementById('c-name').value.trim();
+                const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+                const res = await fetch(`${API_BASE}/admin-panel/categories/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Token ${token}` },
+                    body: JSON.stringify({ name, slug })
+                });
+                if (res.ok) {
+                    alert('Category added!');
+                    document.getElementById('add-category-form').reset();
+                    loadCategoryOptions();
+                    initSharedLayout();
+                } else {
+                    alert('Could not create category (maybe it already exists).');
+                }
+            };
+
+            document.getElementById('add-product-form').onsubmit = async (e) => {
+                e.preventDefault();
+                const fd = new FormData();
+                fd.append('name', document.getElementById('p-name').value.trim());
+                fd.append('category', document.getElementById('p-category').value);
+                fd.append('brand', document.getElementById('p-brand').value.trim());
+                fd.append('price', document.getElementById('p-price').value);
+                fd.append('stock', document.getElementById('p-stock').value);
+                fd.append('description', document.getElementById('p-desc').value.trim());
+
+                const mainImg = document.getElementById('p-image').files[0];
+                if (mainImg) fd.append('image', mainImg);
+
+                const galleryFiles = document.getElementById('p-gallery').files;
+                for (let i = 0; i < galleryFiles.length; i++) {
+                    fd.append('gallery', galleryFiles[i]);
+                }
+
+                const res = await fetch(`${API_BASE}/admin-panel/products/`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Token ${token}` },
+                    body: fd
+                });
+                if (res.ok) {
+                    alert('Product & gallery images published to store!');
+                    document.getElementById('add-product-form').reset();
+                    loadDashboardData();
+                } else {
+                    const err = await res.json();
+                    alert('Error: ' + JSON.stringify(err));
+                }
+            };
+        }
+    </script>
+</body>
+</html>

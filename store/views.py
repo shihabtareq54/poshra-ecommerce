@@ -12,12 +12,15 @@ from rest_framework.views import APIView
 from rest_framework.exceptions import ValidationError
 from rest_framework.authtoken.models import Token
 from rest_framework_simplejwt.tokens import RefreshToken
-from .models import Product, Category,Cart, CartItem, Order, OrderItem
+from .models import Product, Category,Cart, CartItem, Order, OrderItem, ProductImage
 from .serializers import (UserRegisterSerializer, 
                           ProductSerializer, CategorySerializer,
                           CartItemSerializer,CartSerializer, OrderSerializer
                           )
 from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser
+from rest_framework.parsers import MultiPartParser, FormParser
+from django.db.models import Sum
 
 # ==============================================================
 # ১. অথেনটিকেশন API (BM-3)
@@ -85,6 +88,7 @@ class LoginView(APIView):
                 'token': token.key,
                 'user_id': user.id,
                 'username': user.username,
+                'is_staff': user.is_staff,   # <-- এখানে (সফল লগইনের ভেতরে) বসবে!
             }, status=status.HTTP_200_OK)
         else:
             return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
@@ -154,8 +158,9 @@ class ProductListView(generics.ListAPIView):
     filterset_fields = {
         'category': ['exact'],           # ?category=1
         'price': ['gte', 'lte'],         # ['gte', 'lte'] লেখার মানে হলো Greater Than or Equal (>=) এবং Less Than or Equal (<=)!
+        'brand': ['exact', 'icontains'],              # ?brand=Logitech
     }
-    search_fields = ['name', 'description']   # ?search=mouse
+    search_fields = ['name', 'description', 'brand']   # ?search=mouse
     ordering_fields = ['price', 'created_at'] # ?ordering=price (কম থেকে বেশি দাম)
 
 class ProductDetailView(generics.RetrieveAPIView):
@@ -468,3 +473,75 @@ class PaymentCancelView(APIView):
                 </div>
             </div>
         """)
+
+
+
+
+# ==============================================================
+# ৫. ব্র্যান্ড লিস্ট ও সাদিয়ার Store Admin APIs (BM-9 & BM-10)
+# ==============================================================
+
+class BrandListView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        category_id = request.query_params.get('category')
+        qs = Product.objects.all()
+        if category_id:
+            qs = qs.filter(category_id=category_id)
+        brands = list(qs.values_list('brand', flat=True).distinct().order_by('brand'))
+        return Response(brands)
+
+
+class AdminDashboardStatsView(APIView):
+    permission_classes = [IsAdminUser]
+
+    def get(self, request):
+        revenue = Order.objects.filter(payment_status='Paid').aggregate(total=Sum('total_amount'))['total'] or 0
+        return Response({
+            'total_revenue': revenue,
+            'total_orders': Order.objects.count(),
+            'pending_orders': Order.objects.filter(status='Pending').count(),
+            'total_products': Product.objects.count(),
+            'low_stock_count': Product.objects.filter(stock__lte=5).count(),
+        })
+
+
+class AdminProductListCreateView(generics.ListCreateAPIView):
+    queryset = Product.objects.all().order_by('-created_at')
+    serializer_class = ProductSerializer
+    permission_classes = [IsAdminUser]
+    parser_classes = [MultiPartParser, FormParser]
+    pagination_class = None
+
+    def perform_create(self, serializer):
+        product = serializer.save()
+        #একসাথে একাধিক ছবি আপলোড করার জন্য
+        for img in self.request.FILES.getlist('gallery'):
+            ProductImage.objects.create(product=product, image=img)
+
+
+class AdminProductDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Product.objects.all()
+    serializer_class = ProductSerializer
+    permission_classes = [IsAdminUser]
+
+
+class AdminCategoryCreateView(generics.ListCreateAPIView):
+    queryset = Category.objects.all()
+    serializer_class = CategorySerializer
+    permission_classes = [IsAdminUser]
+    pagination_class = None
+
+
+class AdminOrderListView(generics.ListAPIView):
+    queryset = Order.objects.all().order_by('-created_at')
+    serializer_class = OrderSerializer
+    permission_classes = [IsAdminUser]
+    pagination_class = None
+
+
+class AdminOrderStatusUpdateView(generics.UpdateAPIView):
+    queryset = Order.objects.all()
+    serializer_class = OrderSerializer
+    permission_classes = [IsAdminUser]
