@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign In | POSHRA (পসরা)</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+    <div id="shared-header"></div>
+
+    <main class="container page-container">
+        <div class="auth-wrapper panel-card">
+            <h2 id="auth-title" style="margin-bottom:6px;">Sign In to Poshra</h2>
+            <p id="auth-subtitle" style="color:#6b7280; font-size:13px; margin-bottom:20px;">
+                Access your shopping cart, checkout, and order tracking.
+            </p>
+
+            <form id="auth-form">
+                <div class="form-field">
+                    <label>Username</label>
+                    <input type="text" id="username" placeholder="Enter your username" required>
+                </div>
+                <div class="form-field" id="email-field" style="display:none;">
+                    <label>Email Address</label>
+                    <input type="email" id="email" placeholder="name@example.com">
+                </div>
+                <div class="form-field">
+                    <label>Password</label>
+                    <input type="password" id="password" placeholder="••••••••" required>
+                </div>
+
+                <button type="submit" class="btn-accent full-width" id="submit-btn" style="padding:12px;">
+                    Sign In
+                </button>
+            </form>
+
+            <div id="auth-error" class="error-box"></div>
+
+            <p style="text-align:center; margin-top:16px; font-size:13.5px; color:#4b5563;">
+                <span id="switch-text">New to Poshra?</span>
+                <a href="#" id="switch-link" style="color:#3749bb; font-weight:700;">Create Account</a>
+            </p>
+        </div>
+    </main>
+
+    <div id="shared-footer"></div>
+
+    <script src="js/api.js"></script>
+    <script>
+        let isRegister = false;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initSharedLayout();
+            if (localStorage.getItem('auth_token')) {
+                window.location.href = 'index.html';
+                return;
+            }
+
+            document.getElementById('switch-link').onclick = (e) => {
+                e.preventDefault();
+                isRegister = !isRegister;
+                document.getElementById('auth-title').innerText = isRegister ? 'Create Poshra Account' : 'Sign In to Poshra';
+                document.getElementById('email-field').style.display = isRegister ? 'block' : 'none';
+                document.getElementById('submit-btn').innerText = isRegister ? 'Create Account' : 'Sign In';
+                document.getElementById('switch-text').innerText = isRegister ? 'Already have an account?' : 'New to Poshra?';
+                document.getElementById('switch-link').innerText = isRegister ? 'Sign In' : 'Create Account';
+                document.getElementById('auth-error').style.display = 'none';
+            };
+
+            document.getElementById('auth-form').onsubmit = async (e) => {
+                e.preventDefault();
+                const username = document.getElementById('username').value.trim();
+                const email = document.getElementById('email').value.trim();
+                const password = document.getElementById('password').value;
+                const errBox = document.getElementById('auth-error');
+                errBox.style.display = 'none';
+
+                const endpoint = isRegister ? `${API_BASE}/auth/register/` : `${API_BASE}/auth/login/`;
+                const payload = isRegister ? { username, email, password } : { username, password };
+
+                try {
+                    const res = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await res.json();
+
+                    if (res.ok && data.token) {
+                        localStorage.setItem('auth_token', data.token);
+                        localStorage.setItem('username', data.username);
+                        window.location.href = 'index.html';
+                    } else {
+                        errBox.innerText = data.error || JSON.stringify(data);
+                        errBox.style.display = 'block';
+                    }
+                } catch (err) {
+                    errBox.innerText = 'Network error. Make sure Django server is running.';
+                    errBox.style.display = 'block';
+                }
+            };
+        });
+    </script>
+</body>
+</html>

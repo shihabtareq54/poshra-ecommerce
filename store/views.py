@@ -1,5 +1,7 @@
+import os
 import uuid
 import requests
+from django.http import HttpResponse
 from django.conf import settings
 from django.db import transaction 
 from django.contrib.auth import authenticate
@@ -338,62 +340,131 @@ class CheckoutView(APIView):
 
 
 class PaymentSuccessView(APIView):
+    authentication_classes = []
     permission_classes = [AllowAny]
 
     @transaction.atomic
     def post(self, request):
         tran_id = request.data.get('tran_id')
         val_id = request.data.get('val_id')
+        frontend_url = os.getenv('FRONTEND_URL', 'http://127.0.0.1:5500/frontend')
 
         order = generics.get_object_or_404(Order, transaction_id=tran_id)
 
-        if order.payment_status == 'Paid':
-            return Response({"message": "Order already paid.", "order_id": order.id})
+        if order.payment_status != 'Paid':
+            val_url = (
+                "https://sandbox.sslcommerz.com/validator/api/validationserverAPI.php"
+                if settings.SSLCOMMERZ_IS_SANDBOX
+                else "https://securepay.sslcommerz.com/validator/api/validationserverAPI.php"
+            )
+            params = {
+                'val_id': val_id,
+                'store_id': settings.SSLCOMMERZ_STORE_ID,
+                'store_passwd': settings.SSLCOMMERZ_STORE_PASS,
+                'format': 'json'
+            }
+            val_res = requests.get(val_url, params=params, timeout=15).json()
 
-        val_url = (
-            "https://sandbox.sslcommerz.com/validator/api/validationserverAPI.php"
-            if settings.SSLCOMMERZ_IS_SANDBOX
-            else "https://securepay.sslcommerz.com/validator/api/validationserverAPI.php"
-        )
-        params = {
-            'val_id': val_id,
-            'store_id': settings.SSLCOMMERZ_STORE_ID,
-            'store_passwd': settings.SSLCOMMERZ_STORE_PASS,
-            'format': 'json'
-        }
-        val_res = requests.get(val_url, params=params, timeout=15).json()
+            if val_res.get('status') in ['VALID', 'VALIDATED']:
+                order.payment_status = 'Paid'
+                order.status = 'Processing'
+                order.save()
 
-        if val_res.get('status') in ['VALID', 'VALIDATED']:
-            order.payment_status = 'Paid'
-            order.status = 'Processing'
-            order.save()
+                for item in order.items.all():
+                    product = item.product
+                    product.stock = max(0, product.stock - item.quantity)
+                    product.save()
 
-            for item in order.items.all():
-                product = item.product
-                product.stock = max(0, product.stock - item.quantity)
-                product.save()
+                CartItem.objects.filter(cart__user=order.user).delete()
+            else:
+                order.payment_status = 'Failed'
+                order.save()
+                return HttpResponse(f"""
+                    <div style="font-family:Inter,sans-serif; text-align:center; padding:60px 20px;">
+                        <h1 style="color:#dc2626;">Payment Verification Failed</h1>
+                        <p>Could not verify your transaction ({tran_id}).</p>
+                        <a href="{frontend_url}/cart.html" style="display:inline-block; margin-top:20px; padding:10px 20px; background:#081621; color:#fff; text-decoration:none; border-radius:6px;">Return to Cart</a>
+                    </div>
+                """)
 
-            CartItem.objects.filter(cart__user=order.user).delete()
-            return Response({"message": "Payment successful!", "order_id": order.id, "status": "Paid"})
+        html_receipt = f"""
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Order Confirmed | POSHRA</title>
+            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+        </head>
+        <body style="margin:0; background:#f2f4f8; font-family:'Inter',sans-serif; display:flex; justify-content:center; align-items:center; min-height:100vh; padding:20px;">
+            <div style="background:#ffffff; max-width:500px; width:100%; border-radius:12px; padding:36px; box-shadow:0 10px 30px rgba(0,0,0,0.08); text-align:center; border-top:6px solid #16a34a;">
+                <div style="width:64px; height:64px; background:#dcfce7; color:#16a34a; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:32px; margin-bottom:16px;">✓</div>
+                <h1 style="margin:0 0 8px; color:#111827; font-size:24px;">Order Confirmed! 🎉</h1>
+                <p style="margin:0 0 24px; color:#6b7280; font-size:14px;">Thank you for shopping with <strong>পসরা (POSHRA)</strong>. Your payment has been verified.</p>
 
-        order.payment_status = 'Failed'
-        order.save()
-        return Response({"error": "Payment validation failed."}, status=status.HTTP_400_BAD_REQUEST)
+                <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; padding:16px; text-align:left; font-size:13.5px; margin-bottom:24px;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                        <span style="color:#6b7280;">Order ID:</span>
+                        <strong>#{order.id}</strong>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                        <span style="color:#6b7280;">Transaction ID:</span>
+                        <strong>{order.transaction_id}</strong>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                        <span style="color:#6b7280;">Amount Paid:</span>
+                        <strong style="color:#ef4a23;">৳ {order.total_amount}</strong>
+                    </div>
+                    <div style="display:flex; justify-content:space-between;">
+                        <span style="color:#6b7280;">Status:</span>
+                        <strong style="color:#16a34a;">{order.payment_status} ({order.status})</strong>
+                    </div>
+                </div>
+
+                <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+                    <a href="{frontend_url}/orders.html" style="background:#081621; color:#fff; padding:11px 20px; border-radius:6px; text-decoration:none; font-weight:600; font-size:13.5px;">📦 View My Orders</a>
+                    <a href="{frontend_url}/index.html" style="background:#ef4a23; color:#fff; padding:11px 20px; border-radius:6px; text-decoration:none; font-weight:600; font-size:13.5px;">Continue Shopping</a>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        return HttpResponse(html_receipt)
 
 
 class PaymentFailView(APIView):
+    authentication_classes = []
     permission_classes = [AllowAny]
 
     def post(self, request):
         tran_id = request.data.get('tran_id')
+        frontend_url = os.getenv('FRONTEND_URL', 'http://127.0.0.1:5500/frontend')
         Order.objects.filter(transaction_id=tran_id).update(payment_status='Failed')
-        return Response({"message": "Payment failed."}, status=status.HTTP_400_BAD_REQUEST)
+        return HttpResponse(f"""
+            <div style="font-family:Inter,sans-serif; text-align:center; padding:60px 20px; background:#f2f4f8; min-height:100vh;">
+                <div style="background:#fff; max-width:440px; margin:0 auto; padding:32px; border-radius:10px; border-top:6px solid #dc2626;">
+                    <h2 style="color:#dc2626;">Payment Failed ❌</h2>
+                    <p style="color:#4b5563;">Your payment could not be completed. Please try again.</p>
+                    <a href="{frontend_url}/checkout.html" style="display:inline-block; margin-top:16px; padding:10px 20px; background:#ef4a23; color:#fff; text-decoration:none; border-radius:6px; font-weight:600;">Try Again</a>
+                </div>
+            </div>
+        """)
 
 
 class PaymentCancelView(APIView):
+    authentication_classes = []
     permission_classes = [AllowAny]
 
     def post(self, request):
         tran_id = request.data.get('tran_id')
+        frontend_url = os.getenv('FRONTEND_URL', 'http://127.0.0.1:5500/frontend')
         Order.objects.filter(transaction_id=tran_id).update(payment_status='Cancelled', status='Cancelled')
-        return Response({"message": "Payment cancelled by user."}, status=status.HTTP_200_OK)
+        return HttpResponse(f"""
+            <div style="font-family:Inter,sans-serif; text-align:center; padding:60px 20px; background:#f2f4f8; min-height:100vh;">
+                <div style="background:#fff; max-width:440px; margin:0 auto; padding:32px; border-radius:10px; border-top:6px solid #d97706;">
+                    <h2 style="color:#d97706;">Payment Cancelled</h2>
+                    <p style="color:#4b5563;">You cancelled the payment process.</p>
+                    <a href="{frontend_url}/cart.html" style="display:inline-block; margin-top:16px; padding:10px 20px; background:#081621; color:#fff; text-decoration:none; border-radius:6px; font-weight:600;">Return to Cart</a>
+                </div>
+            </div>
+        """)

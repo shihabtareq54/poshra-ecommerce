@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Browse Products | POSHRA (পসরা)</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+    <div id="shared-header"></div>
+
+    <main class="container store-layout">
+        <!-- ফিল্টার সাইডবার -->
+        <aside class="filter-sidebar">
+            <div class="filter-group">
+                <h4>Price Range ৳</h4>
+                <div class="price-inputs">
+                    <input type="number" id="min-price" placeholder="Min">
+                    <span>-</span>
+                    <input type="number" id="max-price" placeholder="Max">
+                </div>
+                <button class="btn-navy" id="apply-filter-btn">Apply Filter</button>
+                <button class="btn-outline-blue" id="reset-filter-btn" style="margin-top:8px;">Clear Filters</button>
+            </div>
+
+            <div class="filter-group">
+                <h4>Sort By</h4>
+                <select id="sort-select" class="filter-select">
+                    <option value="-created_at">Newest Arrivals</option>
+                    <option value="price">Price: Low to High</option>
+                    <option value="-price">Price: High to Low</option>
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <h4>Availability</h4>
+                <label class="checkbox-row">
+                    <input type="checkbox" id="in-stock-only"> In Stock Only
+                </label>
+            </div>
+        </aside>
+
+        <!-- প্রোডাক্ট ক্যাটালগ -->
+        <section>
+            <div class="catalog-header">
+                <h2 id="page-heading">All Products</h2>
+                <span id="product-count-text">Loading...</span>
+            </div>
+
+            <div id="products-grid" class="products-grid">
+                <p>Loading products...</p>
+            </div>
+
+            <div id="pagination-bar" class="pagination-bar"></div>
+        </section>
+    </main>
+
+    <div id="shared-footer"></div>
+
+    <script src="js/api.js"></script>
+    <script>
+        const categoryId = getQueryParam('category') || '';
+        const categoryName = getQueryParam('name') || '';
+        const searchQuery = getQueryParam('search') || '';
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initSharedLayout(categoryId);
+
+            // পেজের শিরোনাম সেট করা
+            const heading = document.getElementById('page-heading');
+            if (searchQuery) {
+                heading.innerText = `Search Results for "${searchQuery}"`;
+            } else if (categoryName) {
+                heading.innerText = categoryName;
+            } else {
+                heading.innerText = 'All Products';
+            }
+
+            loadFilteredProducts();
+
+            document.getElementById('apply-filter-btn').onclick = () => loadFilteredProducts();
+            document.getElementById('sort-select').onchange = () => loadFilteredProducts();
+            document.getElementById('in-stock-only').onchange = () => loadFilteredProducts();
+            document.getElementById('reset-filter-btn').onclick = () => {
+                window.location.href = 'products.html';
+            };
+        });
+
+        async function loadFilteredProducts(url = null) {
+            const grid = document.getElementById('products-grid');
+            const countText = document.getElementById('product-count-text');
+            grid.innerHTML = '<p>Loading products...</p>';
+
+            if (!url) {
+                const params = new URLSearchParams();
+                const minP = document.getElementById('min-price').value;
+                const maxP = document.getElementById('max-price').value;
+                const sort = document.getElementById('sort-select').value;
+
+                if (categoryId) params.append('category', categoryId);
+                if (searchQuery) params.append('search', searchQuery);
+                if (minP) params.append('price__gte', minP);
+                if (maxP) params.append('price__lte', maxP);
+                if (sort) params.append('ordering', sort);
+
+                url = `${API_BASE}/products/?${params.toString()}`;
+            }
+
+            try {
+                const res = await fetch(url);
+                const data = await res.json();
+                let products = data.results || [];
+
+                if (document.getElementById('in-stock-only').checked) {
+                    products = products.filter(p => p.in_stock);
+                }
+
+                countText.innerText = `Showing ${products.length} of ${data.count || products.length} items`;
+
+                if (products.length === 0) {
+                    grid.innerHTML = '<p style="grid-column:1/-1; text-align:center; padding:32px; background:#fff; border-radius:8px;">No products found in this category or search.</p>';
+                    document.getElementById('pagination-bar').innerHTML = '';
+                    return;
+                }
+
+                grid.innerHTML = products.map(buildProductCardHTML).join('');
+                renderPagination(data.previous, data.next);
+            } catch (err) {
+                grid.innerHTML = '<p style="color:#dc2626;">Error loading products.</p>';
+            }
+        }
+
+        function renderPagination(prevUrl, nextUrl) {
+            const bar = document.getElementById('pagination-bar');
+            bar.innerHTML = '';
+            if (prevUrl) {
+                const btn = document.createElement('button');
+                btn.className = 'page-btn';
+                btn.innerText = '← Previous';
+                btn.onclick = () => loadFilteredProducts(prevUrl);
+                bar.appendChild(btn);
+            }
+            if (nextUrl) {
+                const btn = document.createElement('button');
+                btn.className = 'page-btn';
+                btn.innerText = 'Next →';
+                btn.onclick = () => loadFilteredProducts(nextUrl);
+                bar.appendChild(btn);
+            }
+        }
+    </script>
+</body>
+</html>

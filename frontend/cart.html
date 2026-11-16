@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shopping Cart | POSHRA (পসরা)</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+    <div id="shared-header"></div>
+
+    <main class="container page-container">
+        <div class="breadcrumb"><a href="index.html">Home</a> / <span>Shopping Cart</span></div>
+
+        <div id="cart-content" class="cart-layout">
+            <div class="panel-card">
+                <h2 style="margin-bottom:16px;">🛒 Shopping Cart</h2>
+                <div id="cart-table-area"><p>Loading your cart...</p></div>
+            </div>
+
+            <div class="panel-card" id="cart-summary-card" style="display:none;">
+                <h3 style="margin-bottom:16px;">Order Summary</h3>
+                <div class="summary-row">
+                    <span>Subtotal</span>
+                    <strong id="summary-subtotal">৳0</strong>
+                </div>
+                <div class="summary-row">
+                    <span>Delivery</span>
+                    <span>Calculated at checkout</span>
+                </div>
+                <div class="summary-row summary-total">
+                    <span>Total Payable</span>
+                    <span id="summary-total">৳0</span>
+                </div>
+                <a href="checkout.html" class="btn-accent" style="display:block; text-align:center; margin-top:16px;">
+                    Proceed to Checkout →
+                </a>
+            </div>
+        </div>
+    </main>
+
+    <div id="shared-footer"></div>
+
+    <script src="js/api.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            initSharedLayout();
+            if (!requireAuth()) return;
+            loadCartPage();
+        });
+
+        async function loadCartPage() {
+            const token = localStorage.getItem('auth_token');
+            const tableArea = document.getElementById('cart-table-area');
+            const summaryCard = document.getElementById('cart-summary-card');
+
+            try {
+                const res = await fetch(`${API_BASE}/cart/`, {
+                    headers: { 'Authorization': `Token ${token}` }
+                });
+                const cart = await res.json();
+                const items = cart.items || [];
+
+                if (items.length === 0) {
+                    tableArea.innerHTML = `
+                        <p style="color:#6b7280; margin-bottom:16px;">Your shopping cart is currently empty.</p>
+                        <a href="index.html" class="btn-primary" style="display:inline-block;">Continue Shopping</a>
+                    `;
+                    summaryCard.style.display = 'none';
+                    return;
+                }
+
+                summaryCard.style.display = 'block';
+                const totalFormatted = `৳ ${Number(cart.total_price).toLocaleString()}`;
+                document.getElementById('summary-subtotal').innerText = totalFormatted;
+                document.getElementById('summary-total').innerText = totalFormatted;
+
+                tableArea.innerHTML = `
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Product</th>
+                                <th>Unit Price</th>
+                                <th>Quantity</th>
+                                <th>Subtotal</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${items.map(item => `
+                                <tr>
+                                    <td>
+                                        <a href="product-detail.html?id=${item.product}" style="font-weight:600; color:#111827;">
+                                            ${escapeHTML(item.product_name)}
+                                        </a>
+                                    </td>
+                                    <td>৳ ${Number(item.product_price).toLocaleString()}</td>
+                                    <td>
+                                        <div class="qty-selector" style="margin-right:0;">
+                                            <button type="button" onclick="updateItemQty(${item.id}, ${item.quantity - 1})">-</button>
+                                            <span>${item.quantity}</span>
+                                            <button type="button" onclick="updateItemQty(${item.id}, ${item.quantity + 1})">+</button>
+                                        </div>
+                                    </td>
+                                    <td><strong>৳ ${Number(item.subtotal).toLocaleString()}</strong></td>
+                                    <td>
+                                        <button class="btn-danger-sm" onclick="deleteCartItem(${item.id})">Remove</button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+            } catch (err) {
+                tableArea.innerHTML = '<p style="color:#dc2626;">Failed to load cart.</p>';
+            }
+        }
+
+        async function updateItemQty(itemId, newQty) {
+            if (newQty <= 0) return deleteCartItem(itemId);
+            const token = localStorage.getItem('auth_token');
+            const res = await fetch(`${API_BASE}/cart/items/${itemId}/`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Token ${token}` },
+                body: JSON.stringify({ quantity: newQty })
+            });
+            if (res.ok) {
+                loadCartPage();
+                updateCartBadge();
+            } else {
+                const err = await res.json();
+                alert(err[0] || err.error || 'Stock limit reached.');
+            }
+        }
+
+        async function deleteCartItem(itemId) {
+            const token = localStorage.getItem('auth_token');
+            await fetch(`${API_BASE}/cart/items/${itemId}/`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Token ${token}` }
+            });
+            loadCartPage();
+            updateCartBadge();
+        }
+    </script>
+</body>
+</html>
