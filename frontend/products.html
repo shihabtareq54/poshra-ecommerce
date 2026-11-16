@@ -11,7 +11,6 @@
     <div id="shared-header"></div>
 
     <main class="container store-layout">
-        <!-- ফিল্টার সাইডবার -->
         <aside class="filter-sidebar">
             <div class="filter-group">
                 <h4>Price Range ৳</h4>
@@ -34,6 +33,13 @@
             </div>
 
             <div class="filter-group">
+                <h4>Brand</h4>
+                <select id="brand-select" class="filter-select">
+                    <option value="">All Brands</option>
+                </select>
+            </div>
+
+            <div class="filter-group">
                 <h4>Availability</h4>
                 <label class="checkbox-row">
                     <input type="checkbox" id="in-stock-only"> In Stock Only
@@ -41,7 +47,6 @@
             </div>
         </aside>
 
-        <!-- প্রোডাক্ট ক্যাটালগ -->
         <section>
             <div class="catalog-header">
                 <h2 id="page-heading">All Products</h2>
@@ -63,29 +68,44 @@
         const categoryId = getQueryParam('category') || '';
         const categoryName = getQueryParam('name') || '';
         const searchQuery = getQueryParam('search') || '';
+        const urlBrand = getQueryParam('brand') || '';
 
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             initSharedLayout(categoryId);
+            await loadSidebarBrands();
 
-            // পেজের শিরোনাম সেট করা
             const heading = document.getElementById('page-heading');
-            if (searchQuery) {
-                heading.innerText = `Search Results for "${searchQuery}"`;
-            } else if (categoryName) {
-                heading.innerText = categoryName;
-            } else {
-                heading.innerText = 'All Products';
-            }
+            if (searchQuery) heading.innerText = `Search Results for "${searchQuery}"`;
+            else if (categoryName && urlBrand) heading.innerText = `${categoryName} — ${urlBrand}`;
+            else if (categoryName) heading.innerText = categoryName;
+            else heading.innerText = 'All Products';
 
             loadFilteredProducts();
 
             document.getElementById('apply-filter-btn').onclick = () => loadFilteredProducts();
             document.getElementById('sort-select').onchange = () => loadFilteredProducts();
+            document.getElementById('brand-select').onchange = () => loadFilteredProducts();
             document.getElementById('in-stock-only').onchange = () => loadFilteredProducts();
             document.getElementById('reset-filter-btn').onclick = () => {
                 window.location.href = 'products.html';
             };
         });
+
+        async function loadSidebarBrands() {
+            const select = document.getElementById('brand-select');
+            try {
+                const bUrl = categoryId ? `${API_BASE}/brands/?category=${categoryId}` : `${API_BASE}/brands/`;
+                const res = await fetch(bUrl);
+                const brands = await res.json();
+                brands.forEach(b => {
+                    const opt = document.createElement('option');
+                    opt.value = b;
+                    opt.innerText = b;
+                    if (b === urlBrand) opt.selected = true;
+                    select.appendChild(opt);
+                });
+            } catch {}
+        }
 
         async function loadFilteredProducts(url = null) {
             const grid = document.getElementById('products-grid');
@@ -96,12 +116,14 @@
                 const params = new URLSearchParams();
                 const minP = document.getElementById('min-price').value;
                 const maxP = document.getElementById('max-price').value;
+                const brand = document.getElementById('brand-select').value;
                 const sort = document.getElementById('sort-select').value;
 
                 if (categoryId) params.append('category', categoryId);
                 if (searchQuery) params.append('search', searchQuery);
                 if (minP) params.append('price__gte', minP);
                 if (maxP) params.append('price__lte', maxP);
+                if (brand) params.append('brand', brand);
                 if (sort) params.append('ordering', sort);
 
                 url = `${API_BASE}/products/?${params.toString()}`;
@@ -119,14 +141,14 @@
                 countText.innerText = `Showing ${products.length} of ${data.count || products.length} items`;
 
                 if (products.length === 0) {
-                    grid.innerHTML = '<p style="grid-column:1/-1; text-align:center; padding:32px; background:#fff; border-radius:8px;">No products found in this category or search.</p>';
+                    grid.innerHTML = '<p style="grid-column:1/-1; text-align:center; padding:32px; background:#fff; border-radius:8px;">No products found.</p>';
                     document.getElementById('pagination-bar').innerHTML = '';
                     return;
                 }
 
                 grid.innerHTML = products.map(buildProductCardHTML).join('');
                 renderPagination(data.previous, data.next);
-            } catch (err) {
+            } catch {
                 grid.innerHTML = '<p style="color:#dc2626;">Error loading products.</p>';
             }
         }

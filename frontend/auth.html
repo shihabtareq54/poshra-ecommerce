@@ -91,12 +91,13 @@
                     if (res.ok && data.token) {
                         localStorage.setItem('auth_token', data.token);
                         localStorage.setItem('username', data.username);
+                        localStorage.setItem('is_staff', data.is_staff ? 'true' : 'false');
                         window.location.href = 'index.html';
                     } else {
                         errBox.innerText = data.error || JSON.stringify(data);
                         errBox.style.display = 'block';
                     }
-                } catch (err) {
+                } catch {
                     errBox.innerText = 'Network error. Make sure Django server is running.';
                     errBox.style.display = 'block';
                 }

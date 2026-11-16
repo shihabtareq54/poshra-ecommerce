@@ -1,22 +1,13 @@
-// ==============================================================
-// পসরা (Poshra) — শেয়ার্ড API এবং নেভিগেশন ইঞ্জিন
-// ==============================================================
-
 const API_BASE = 'http://127.0.0.1:8000/api';
 const FALLBACK_IMG = 'https://images.unsplash.com/photo-1527814050087-3793815479db?auto=format&fit=crop&w=600&q=80';
 
 function getQueryParam(name) {
-    const params = new URLSearchParams(window.location.search);
-    return params.get(name);
+    return new URLSearchParams(window.location.search).get(name);
 }
 
 function escapeHTML(str) {
     return String(str || '').replace(/[&<>'"]/g, tag => ({
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        "'": '&#39;',
-        '"': '&quot;'
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
     }[tag]));
 }
 
@@ -34,14 +25,15 @@ async function initSharedLayout(activeCategoryId = '') {
 
     const token = localStorage.getItem('auth_token');
     const username = localStorage.getItem('username');
+    const isStaff = localStorage.getItem('is_staff') === 'true';
     const currentSearch = getQueryParam('search') || '';
 
     if (headerSlot) {
         headerSlot.innerHTML = `
             <header class="main-header">
                 <div class="container header-inner">
-                    <a href="index.html" class="brand-logo" style="gap: 10px;">
-                        <svg width="34" height="34" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <a href="index.html" class="brand-logo">
+                        <svg width="34" height="34" viewBox="0 0 40 40" fill="none">
                             <path d="M11 34V8H23C28.5228 8 33 12.4772 33 18C33 23.5228 28.5228 28 23 28H16" stroke="#ef4a23" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/>
                             <path d="M16 14H22C24.2091 14 26 15.7909 26 18C26 20.2091 24.2091 22 22 22H16" stroke="#ef4a23" stroke-width="2.5" stroke-linecap="round"/>
                             <circle cx="11" cy="34" r="3" fill="#ef4a23"/>
@@ -53,14 +45,13 @@ async function initSharedLayout(activeCategoryId = '') {
                     </a>
 
                     <form class="search-box" id="global-search-form">
-                        <input type="text" id="global-search-input" value="${escapeHTML(currentSearch)}" placeholder="Search laptops, mice, gadgets...">
-                        <button type="submit" title="Search">🔍</button>
+                        <input type="text" id="global-search-input" value="${escapeHTML(currentSearch)}" placeholder="Search laptops, mice, brands...">
+                        <button type="submit">🔍</button>
                     </form>
 
                     <div class="header-actions">
-                        ${token && username ? `
-                            <a href="orders.html" class="nav-link-btn">📦 My Orders</a>
-                        ` : ''}
+                        ${isStaff ? `<a href="admin-dashboard.html" class="nav-link-btn" style="border-color:#ef4a23; color:#fca5a5;">⚙️ Store Admin</a>` : ''}
+                        ${token && username ? `<a href="orders.html" class="nav-link-btn">📦 My Orders</a>` : ''}
                         <a href="cart.html" class="nav-link-btn">
                             🛒 Cart <span class="cart-badge" id="global-cart-count">0</span>
                         </a>
@@ -84,11 +75,7 @@ async function initSharedLayout(activeCategoryId = '') {
         document.getElementById('global-search-form').onsubmit = (e) => {
             e.preventDefault();
             const q = document.getElementById('global-search-input').value.trim();
-            if (q) {
-                window.location.href = `products.html?search=${encodeURIComponent(q)}`;
-            } else {
-                window.location.href = 'products.html';
-            }
+            window.location.href = q ? `products.html?search=${encodeURIComponent(q)}` : 'products.html';
         };
 
         const logoutBtn = document.getElementById('global-logout-btn');
@@ -99,15 +86,13 @@ async function initSharedLayout(activeCategoryId = '') {
                         method: 'POST',
                         headers: { 'Authorization': `Token ${token}` }
                     });
-                } catch (err) {
-                    console.warn('Logout API notice:', err);
-                }
+                } catch {}
                 localStorage.clear();
                 window.location.href = 'index.html';
             };
         }
 
-        loadGlobalCategories(activeCategoryId);
+        loadGlobalCategoriesWithBrands(activeCategoryId);
     }
 
     if (footerSlot) {
@@ -120,26 +105,42 @@ async function initSharedLayout(activeCategoryId = '') {
         `;
     }
 
-    if (token) {
-        updateCartBadge();
-    }
+    if (token) updateCartBadge();
 }
 
-async function loadGlobalCategories(activeCategoryId) {
+// প্রতিটি ক্যাটাগরি ট্যাবে হোভার করলে সেই ক্যাটাগরির ব্র্যান্ড ড্রপডাউন মেনু দেখাবে!
+async function loadGlobalCategoriesWithBrands(activeCategoryId) {
     const catList = document.getElementById('global-category-list');
     if (!catList) return;
 
     try {
         const res = await fetch(`${API_BASE}/categories/`);
         const categories = await res.json();
-        categories.forEach(cat => {
+
+        for (const cat of categories) {
             const isActive = String(cat.id) === String(activeCategoryId);
-            const link = document.createElement('a');
-            link.href = `products.html?category=${cat.id}&name=${encodeURIComponent(cat.name)}`;
-            link.className = `cat-tab ${isActive ? 'active' : ''}`;
-            link.innerText = cat.name;
-            catList.appendChild(link);
-        });
+            const wrapper = document.createElement('div');
+            wrapper.className = 'cat-dropdown';
+
+            // ক্যাটাগরির ভেতরে থাকা ব্র্যান্ডগুলো আনা
+            const bRes = await fetch(`${API_BASE}/brands/?category=${cat.id}`);
+            const brands = await bRes.json();
+
+            wrapper.innerHTML = `
+                <a href="products.html?category=${cat.id}&name=${encodeURIComponent(cat.name)}" class="cat-tab ${isActive ? 'active' : ''}">
+                    ${escapeHTML(cat.name)} ${brands.length ? '▾' : ''}
+                </a>
+                ${brands.length ? `
+                    <div class="cat-dropdown-menu">
+                        <a href="products.html?category=${cat.id}&name=${encodeURIComponent(cat.name)}" class="dropdown-item"><strong>All ${escapeHTML(cat.name)}</strong></a>
+                        ${brands.map(b => `
+                            <a href="products.html?category=${cat.id}&name=${encodeURIComponent(cat.name)}&brand=${encodeURIComponent(b)}" class="dropdown-item">${escapeHTML(b)}</a>
+                        `).join('')}
+                    </div>
+                ` : ''}
+            `;
+            catList.appendChild(wrapper);
+        }
     } catch (err) {
         console.error('Failed to load categories:', err);
     }
@@ -151,17 +152,12 @@ async function updateCartBadge() {
     if (!token || !badge) return;
 
     try {
-        const res = await fetch(`${API_BASE}/cart/`, {
-            headers: { 'Authorization': `Token ${token}` }
-        });
+        const res = await fetch(`${API_BASE}/cart/`, { headers: { 'Authorization': `Token ${token}` } });
         if (res.ok) {
             const cart = await res.json();
-            const count = (cart.items || []).reduce((sum, item) => sum + item.quantity, 0);
-            badge.innerText = count;
+            badge.innerText = (cart.items || []).reduce((sum, i) => sum + i.quantity, 0);
         }
-    } catch (err) {
-        console.error('Cart badge update error:', err);
-    }
+    } catch {}
 }
 
 async function addToCartAPI(productId, quantity = 1, goToCheckout = false) {
@@ -175,32 +171,26 @@ async function addToCartAPI(productId, quantity = 1, goToCheckout = false) {
     try {
         const res = await fetch(`${API_BASE}/cart/items/`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Token ${token}`
-            },
-            body: JSON.stringify({ product: productId, quantity: quantity })
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Token ${token}` },
+            body: JSON.stringify({ product: productId, quantity })
         });
         const data = await res.json();
 
         if (res.status === 401) {
             localStorage.clear();
-            alert('Your session expired. Please Sign In again.');
+            alert('Session expired. Please Sign In again.');
             window.location.href = 'auth.html';
             return;
         }
 
         if (res.ok) {
             await updateCartBadge();
-            if (goToCheckout) {
-                window.location.href = 'checkout.html';
-            } else {
-                alert('Product added to your cart!');
-            }
+            if (goToCheckout) window.location.href = 'checkout.html';
+            else alert('Product added to your cart!');
         } else {
             alert(data.error || data.detail || 'Could not add product to cart.');
         }
-    } catch (err) {
+    } catch {
         alert('Network error. Make sure Django server is running.');
     }
 }
@@ -212,6 +202,7 @@ function buildProductCardHTML(p) {
                 <span class="stock-badge ${p.in_stock ? 'in-stock' : 'out-stock'}">
                     ${p.in_stock ? 'In Stock' : 'Out of Stock'}
                 </span>
+                <span class="brand-tag">${escapeHTML(p.brand)}</span>
             </div>
             <a href="product-detail.html?id=${p.id}" class="product-thumb">
                 <img src="${p.image || FALLBACK_IMG}" alt="${escapeHTML(p.name)}">

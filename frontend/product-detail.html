@@ -57,9 +57,22 @@
                     <span>${escapeHTML(p.name)}</span>
                 `;
 
+                const mainUrl = p.image || FALLBACK_IMG;
+                const allImages = [mainUrl, ...(p.gallery || []).map(g => g.image)];
+
                 container.innerHTML = `
-                    <div class="detail-image-box">
-                        <img src="${p.image || FALLBACK_IMG}" alt="${escapeHTML(p.name)}">
+                    <div>
+                        <div class="detail-image-box">
+                            <img id="main-preview-img" src="${mainUrl}" alt="${escapeHTML(p.name)}">
+                        </div>
+                        ${allImages.length > 1 ? `
+                            <div style="display:flex; gap:10px; margin-top:12px; flex-wrap:wrap;">
+                                ${allImages.map((imgUrl, idx) => `
+                                    <img src="${imgUrl}" onclick="document.getElementById('main-preview-img').src='${imgUrl}'"
+                                         style="width:68px; height:68px; object-fit:cover; border-radius:6px; border:2px solid ${idx===0 ? '#ef4a23' : '#e5e7eb'}; cursor:pointer;">
+                                `).join('')}
+                            </div>
+                        ` : ''}
                     </div>
 
                     <div class="detail-info">
@@ -67,7 +80,9 @@
                             ${p.in_stock ? `In Stock (${p.stock} available)` : 'Out of Stock'}
                         </span>
                         <h1>${escapeHTML(p.name)}</h1>
-                        <div style="font-size:13px; color:#6b7280;">Category: <strong>${escapeHTML(p.category_name)}</strong></div>
+                        <div style="font-size:13px; color:#6b7280;">
+                            Brand: <strong>${escapeHTML(p.brand)}</strong> • Category: <strong>${escapeHTML(p.category_name)}</strong>
+                        </div>
                         <div class="detail-price">৳ ${Number(p.price).toLocaleString()}</div>
 
                         <h4 style="font-size:14px; margin-bottom:6px; color:#111827;">Key Specifications & Description</h4>
@@ -94,7 +109,7 @@
                         `}
                     </div>
                 `;
-            } catch (err) {
+            } catch {
                 container.innerHTML = '<p style="color:#dc2626;">Failed to load product details.</p>';
             }
         }
