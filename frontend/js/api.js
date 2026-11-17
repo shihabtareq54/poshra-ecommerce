@@ -1,4 +1,4 @@
-const API_BASE = 'http://127.0.0.1:8000/api';
+const API_BASE = 'https://poshra-ecommerce.onrender.com/api';
 const FALLBACK_IMG = 'https://images.unsplash.com/photo-1527814050087-3793815479db?auto=format&fit=crop&w=600&q=80';
 
 function getQueryParam(name) {
